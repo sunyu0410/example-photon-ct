@@ -35,7 +35,7 @@ INPUT_PATH = Path("/input")
 OUTPUT_PATH = Path("/output")
 RESOURCE_PATH = Path("resources")
 
-DEFAULT_TASK = "proton-ct"
+DEFAULT_TASK = "photon-ct"
 DOSE_SIMULATION = "gaussian"  # "zeros", "noise" or "gaussian"
 NUM_OUTPUT_FILES = 10
 
