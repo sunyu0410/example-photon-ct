@@ -16,6 +16,7 @@ from bev_torch import (
     draw_iso_mlc,
 )
 
+import pandas as pd
 
 def get_bbox(arr, margin=5):
     """Get the bounding box of an np mask
@@ -41,12 +42,14 @@ def get_bbox(arr, margin=5):
 
 class InferenceBeamData(Dataset):
     def __init__(self, group):
+        super().__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.group = group
         self.len = group.shape[0]
 
         # Parse the group df
         self.input_idx = group["image_file_idx"].tolist()[0]
+        self.output_idx = group['output_info.output_file_idx'].tolist()[0]
         self.isocentre = group["beams.iso_center"].tolist()[0]
         self.sad = group["beams.SAD"].tolist()[0]
 
@@ -194,6 +197,47 @@ class InferenceBeamData(Dataset):
             ).cpu()
 
         return self.preds_back
+
+class InferenceRunner():
+    def __init__(self, metadata, scale=1e-5):
+        self.df = pd.json_normalize(
+            metadata, 
+            record_path=['beams', 'control_points'], 
+            meta=[
+                'image_file_idx', 
+                'anatomical_region', 
+                ['beams', 'SAD'], 
+                ['beams', 'iso_center'], 
+                ['beams', 'num_mlc_leaf_pairs'],
+            ]
+        )
+
+        self.groups = df.groupby('output_info.output_file_idx')
+        self.scale = scale
+
+    def run(self, model):
+        for i in range(self.groups.ngroups):
+            print(f'Processing Group {i}')
+            d = InferenceBeamData(groups.get_group(i))
+            out = d.inference(model)
+    
+            # Scale it back
+            out = out * self.scale
+    
+            # Save to .mha e.g. (x, x, x, 40)
+            preds_sitk = []
+            for t in out.unbind(dim=0):
+                pred_sitk = sitk.GetImageFromArray(t.float().numpy())
+                pred_sitk.CopyInformation(d.img_sitk)
+                preds_sitk.append(pred_sitk)
+            stacked = sitk.JoinSeries(preds_sitk)
+    
+            output_dir = OUTPUT_PATH / f"images/stacked-radiation-dose-map-{d.output_index + 1}"
+            sitk.WriteImage(stacked, output_dir / "output.mha", useCompression=False)
+
+        print('Runner finishes')
+     
+
 
 if __name__ == "__main__":
     import pandas as pd

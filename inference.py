@@ -74,42 +74,13 @@ def run(model):
     metadata = load_json_file(INPUT_PATH / f"{INPUT_JSON_NAME}.json")
 
     ##################################################
-    from inference_data import InferenceBeamData
-    import pandas as pd
+    # Shared objects
+    # INPUT_PATH, OUTPUT_PATH, INPUT_DIR_BASE
 
-    df = pd.json_normalize(
-        metadata, 
-        record_path=['beams', 'control_points'], 
-        meta=[
-            'image_file_idx', 
-            'anatomical_region', 
-            ['beams', 'SAD'], 
-            ['beams', 'iso_center'], 
-            ['beams', 'num_mlc_leaf_pairs'],
-        ]
-    )
-    groups = df.groupby('output_info.output_file_idx')
-
-    for i in range(groups.ngroups):
-        print(f'Processing Group {i}')
-        d = InferenceBeamData(groups.get_group(i))
-        out = d.inference(model)
-
-        # Scale it back 1e-5
-        out = out * 1e-5
-
-        # Save to .mha e.g. (x, x, x, 40)
-        preds_sitk = []
-        for t in out.unbind(dim=0):
-            pred_sitk = sitk.GetImageFromArray(t.float().numpy())
-            pred_sitk.CopyInformation(d.img_sitk)
-            preds_sitk.append(pred_sitk)
-        stacked = sitk.JoinSeries(preds_sitk)
-
-        output_index = d.group['output_info.output_file_idx'].tolist()[0]
-        output_dir = OUTPUT_PATH / f"images/stacked-radiation-dose-map-{output_index + 1}"
-        sitk.WriteImage(stacked, output_dir / "output.mha", useCompression=False)
-
+    from inference_data import InferenceRunner
+    runner = InferenceRunner(metadata)
+    runner.run(model)
+    
     ##################################################
 
     return 0
