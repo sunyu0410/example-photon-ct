@@ -74,11 +74,13 @@ def run(model):
     metadata = load_json_file(INPUT_PATH / f"{INPUT_JSON_NAME}.json")
 
     ##################################################
-    # Shared objects
-    # INPUT_PATH, OUTPUT_PATH, INPUT_DIR_BASE
-
     from inference_data import InferenceRunner
-    runner = InferenceRunner(metadata)
+    runner = InferenceRunner(
+        metadata,
+        INPUT_PATH,
+        INPUT_DIR_BASE,
+        OUTPUT_PATH
+    )
     runner.run(model)
     
     ##################################################

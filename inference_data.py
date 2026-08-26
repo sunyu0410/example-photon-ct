@@ -41,11 +41,14 @@ def get_bbox(arr, margin=5):
 
 
 class InferenceBeamData(Dataset):
-    def __init__(self, group):
+    def __init__(self, group, INPUT_PATH, INPUT_DIR_BASE, OUTPUT_PATH):
         super().__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.group = group
         self.len = group.shape[0]
+        self.INPUT_PATH = INPUT_PATH
+        self.INPUT_DIR_BASE = INPUT_DIR_BASE
+        self.OUTPUT_PATH = OUTPUT_PATH
 
         # Parse the group df
         self.input_idx = group["image_file_idx"].tolist()[0]
@@ -74,8 +77,8 @@ class InferenceBeamData(Dataset):
         self.bev = self.cal_bev()
 
     def load_input_by_index(self, idx):
-        location = INPUT_PATH / f"images/{INPUT_DIR_BASE}-{idx + 1}"
-        filepath = location.glob("*.mha")[0]
+        location = self.INPUT_PATH / f"images/{self.INPUT_DIR_BASE}-{idx + 1}"
+        filepath = list(location.glob("*.mha"))[0]
         return sitk.ReadImage(filepath)
 
     def rotate_img(self):
@@ -165,11 +168,11 @@ class InferenceBeamData(Dataset):
 
     def inference(self, model):
         cp_preds = []
-        for img, bev, mask, loc in tqdm(d):
+        for img, bev, mask, loc in tqdm(self):
             with torch.no_grad():
                 box_pred = model(img, bev, mask).cpu()
                 box_pred[bev==0] = 0 
-                cp_pred = torch.zeros_like(d.img)
+                cp_pred = torch.zeros_like(self.img)
                 cp_pred[loc] = box_pred
                 cp_preds.append(cp_pred)
         self.preds = torch.stack(cp_preds, dim=0)
@@ -199,7 +202,7 @@ class InferenceBeamData(Dataset):
         return self.preds_back
 
 class InferenceRunner():
-    def __init__(self, metadata, scale=1e-5):
+    def __init__(self, metadata, INPUT_PATH, INPUT_DIR_BASE, OUTPUT_PATH, scale=1e-5):
         self.df = pd.json_normalize(
             metadata, 
             record_path=['beams', 'control_points'], 
@@ -211,14 +214,22 @@ class InferenceRunner():
                 ['beams', 'num_mlc_leaf_pairs'],
             ]
         )
+        self.INPUT_PATH = INPUT_PATH
+        self.INPUT_DIR_BASE = INPUT_DIR_BASE
+        self.OUTPUT_PATH = OUTPUT_PATH
 
-        self.groups = df.groupby('output_info.output_file_idx')
+        self.groups = self.df.groupby('output_info.output_file_idx')
         self.scale = scale
 
     def run(self, model):
         for i in range(self.groups.ngroups):
             print(f'Processing Group {i}')
-            d = InferenceBeamData(groups.get_group(i))
+            d = InferenceBeamData(
+                self.groups.get_group(i),
+                INPUT_PATH = self.INPUT_PATH,
+                INPUT_DIR_BASE = self.INPUT_DIR_BASE,
+                OUTPUT_PATH = self.OUTPUT_PATH
+            )
             out = d.inference(model)
     
             # Scale it back
@@ -232,7 +243,8 @@ class InferenceRunner():
                 preds_sitk.append(pred_sitk)
             stacked = sitk.JoinSeries(preds_sitk)
     
-            output_dir = OUTPUT_PATH / f"images/stacked-radiation-dose-map-{d.output_index + 1}"
+            output_dir = d.OUTPUT_PATH / f"images/stacked-radiation-dose-map-{d.output_idx + 1}"
+            output_dir.mkdir(parents=True, exist_ok=True)
             sitk.WriteImage(stacked, output_dir / "output.mha", useCompression=False)
 
         print('Runner finishes')
