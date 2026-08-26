@@ -1,8 +1,6 @@
 import torch
 import torch.nn.functional as F
 import SimpleITK as sitk
-import json
-import SimpleITK as sitk
 
 
 def make_grid(
