@@ -18,6 +18,10 @@ RUN python -m pip install \
     --no-color \
     --requirement /opt/app/requirements.txt
 
+# Pre-compile into bytecode to import faster
+RUN python -m compileall /opt/conda/lib/python3.11/site-packages
+RUN python -m compileall /opt/app/
+
 LABEL org.grand-challenge.api-method="invoke"
 
 ENTRYPOINT ["python", "app.py"]
