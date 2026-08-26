@@ -8,7 +8,7 @@ USER user
 
 WORKDIR /opt/app
 
-COPY --chown=user:user app.py /opt/app/
+COPY --chown=user:user *.py /opt/app/
 COPY --chown=user:user requirements.txt /opt/app/
 
 # You can add any Python dependencies to requirements.txt
@@ -17,8 +17,6 @@ RUN python -m pip install \
     --no-cache-dir \
     --no-color \
     --requirement /opt/app/requirements.txt
-
-COPY --chown=user:user inference.py /opt/app/
 
 LABEL org.grand-challenge.api-method="invoke"
 

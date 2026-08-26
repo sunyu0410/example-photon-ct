@@ -35,7 +35,11 @@ INPUT_PATH = Path("/input")
 OUTPUT_PATH = Path("/output")
 RESOURCE_PATH = Path("resources")
 
+##################################################
 DEFAULT_TASK = "photon-ct"
+##################################################
+
+
 DOSE_SIMULATION = "gaussian"  # "zeros", "noise" or "gaussian"
 NUM_OUTPUT_FILES = 10
 
@@ -68,49 +72,45 @@ def run(model):
 
     print("Loading json metadata:")
     metadata = load_json_file(INPUT_PATH / f"{INPUT_JSON_NAME}.json")
-    output_infos = flatten_output_infos(metadata)
 
-    # Group output_infos per output file, keyed by their slice position.
-    per_output = [dict() for _ in range(NUM_OUTPUT_FILES)]
-    for oi in output_infos:
-        per_output[oi["output_file_idx"]][oi["idx_in_output"]] = oi
+    ##################################################
+    from inference_data import InferenceBeamData
+    import pandas as pd
 
-    stack_sizes = [max(slot) + 1 if slot else 0 for slot in per_output]
-    print(f"Stack sizes: {stack_sizes}")
+    df = pd.json_normalize(
+        metadata, 
+        record_path=['beams', 'control_points'], 
+        meta=[
+            'image_file_idx', 
+            'anatomical_region', 
+            ['beams', 'SAD'], 
+            ['beams', 'iso_center'], 
+            ['beams', 'num_mlc_leaf_pairs'],
+        ]
+    )
+    groups = df.groupby('output_info.output_file_idx')
 
-    for output_index in range(NUM_OUTPUT_FILES):
-        slot = per_output[output_index]
-        stack_size = stack_sizes[output_index]
+    for i in range(groups.ngroups):
+        print(f'Processing Group {i}')
+        d = InferenceBeamData(groups.get_group(i))
+        out = d.inference(model)
 
+        # Scale it back 1e-5
+        out = out * 1e-5
+
+        # Save to .mha e.g. (x, x, x, 40)
+        preds_sitk = []
+        for t in out.unbind(dim=0):
+            pred_sitk = sitk.GetImageFromArray(t.float().numpy())
+            pred_sitk.CopyInformation(d.img_sitk)
+            preds_sitk.append(pred_sitk)
+        stacked = sitk.JoinSeries(preds_sitk)
+
+        output_index = d.group['output_info.output_file_idx'].tolist()[0]
         output_dir = OUTPUT_PATH / f"images/stacked-radiation-dose-map-{output_index + 1}"
-        os.makedirs(output_dir, exist_ok=True)
-
-        if stack_size == 0:
-            # Empty stack: write a placeholder to honor the output contract.
-            sitk.WriteImage(
-                sitk.Image(1, 1, sitk.sitkFloat32), output_dir / "output.mha"
-            )
-            continue
-
-        # Every slice in a stack shares the same source image.
-        input_image = load_input_by_index(slot[0]["input_file_idx"])
-
-        print(
-            f"Writing dummy dose stack for output file index {output_index + 1} "
-            f"with {stack_size} slices"
-        )
-        dose_slices = []
-        for slice_index in range(stack_size):
-            print(f"Generating dummy dose map {slice_index} for output file index {output_index + 1}")
-            # In a real algorithm this is where inference would run.
-            dose_np = simulate_dose(input_image, slot.get(slice_index), device)
-            dose_slice = sitk.GetImageFromArray(dose_np)
-            dose_slice.CopyInformation(input_image)
-            dose_slices.append(dose_slice)
-
-        stacked = sitk.JoinSeries(dose_slices)
-        print(stacked.GetSize())
         sitk.WriteImage(stacked, output_dir / "output.mha", useCompression=False)
+
+    ##################################################
 
     return 0
 

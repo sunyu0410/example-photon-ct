@@ -40,18 +40,15 @@ def init_model():
     # Example how to set torch to use the GPU (if available)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    model = torch.nn.Linear(10, 1).to(device)
 
-    # Your model will be extracted to the `model_dir` at runtime on Grand Challenge
-    # Note: when testing locally, the local `./model` directory is mounted here.
-    # Eventually, you should upload it as a tarball to Grand Challenge!
-    # Go to Algorithm and upload it under Models.
+    #######################################
+    from models import BeamNet
+    model = BeamNet()
     model_dir = Path("/opt/ml/model")
-    with open(
-        model_dir / "a_tarball_subdirectory" / "some_tarball_resource.txt", "r"
-    ) as f:
-        print(f.read())
+    model.load_state_dict(torch.load(model_dir / 'model_weights.pth'))
+    #######################################
 
+    
     return model
 
 
