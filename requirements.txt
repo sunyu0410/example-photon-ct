@@ -6,3 +6,5 @@ SimpleITK
 scipy
 tqdm
 segmentation_models_pytorch
+fastapi
+uvicorn
