@@ -17,6 +17,7 @@ from bev_torch import (
 )
 
 import pandas as pd
+import gc
 
 def get_bbox(arr, margin=5):
     """Get the bounding box of an np mask
@@ -121,7 +122,7 @@ class InferenceBeamData(Dataset):
                 bev_iso = draw_iso_mlc(self.img_sitk, mlc)  # (nx, nz) -> (246, 249)
                 bev_iso_list.append(bev_iso)
             bev_iso_list = np.stack(bev_iso_list, axis=0)
-            mlc_masks_2d = torch.tensor(bev_iso_list).to(torch.float32)
+            mlc_masks_2d = torch.tensor(bev_iso_list).to(torch.float16)
             return mlc_masks_2d
 
         # Cal z_scales
@@ -171,12 +172,16 @@ class InferenceBeamData(Dataset):
     def inference(self, model):
         cp_preds = []
         for img, bev, mask, loc in tqdm(self):
-            with torch.no_grad():
+
+            ############ Model Inference #################
+            with torch.inference_mode():
                 box_pred = model(img, bev, mask).cpu()
                 box_pred[bev==0] = 0 
                 cp_pred = torch.zeros_like(self.img)
                 cp_pred[loc] = box_pred
                 cp_preds.append(cp_pred)
+            ###############################################
+
         self.preds = torch.stack(cp_preds, dim=0)
 
         self.preds_back = torch.zeros_like(self.preds)
@@ -248,6 +253,11 @@ class InferenceRunner():
             output_dir = d.OUTPUT_PATH / f"images/stacked-radiation-dose-map-{d.output_idx + 1}"
             output_dir.mkdir(parents=True, exist_ok=True)
             sitk.WriteImage(stacked, output_dir / "output.mha", useCompression=False)
+
+            # Garbage collection
+            del d, out, preds_sitk, stacked
+            gc.collect()
+            torch.cuda.empty_cache()
 
         print('Runner finishes')
      

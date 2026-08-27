@@ -73,6 +73,14 @@ def run(model):
     print("Loading json metadata:")
     metadata = load_json_file(INPUT_PATH / f"{INPUT_JSON_NAME}.json")
 
+    # Write the placehold. Prediction will overwrite
+    for output_index in range(NUM_OUTPUT_FILES):
+        output_dir = OUTPUT_PATH / f"images/stacked-radiation-dose-map-{output_index + 1}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        sitk.WriteImage(
+            sitk.Image(1, 1, sitk.sitkFloat32), output_dir / "output.mha"
+        )
+
     ##################################################
     from inference_data import InferenceRunner
     runner = InferenceRunner(

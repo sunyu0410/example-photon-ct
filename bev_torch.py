@@ -27,7 +27,7 @@ def make_grid_5d(B, isocentre_idx, z_scales, ref_img):
         [X_transformed, Y_transformed, Z_transformed], dim=-1
     )  # (90, 128, 128, 3)
     grid_5d = (
-        shared_grid_3d.unsqueeze(0).expand(B, -1, -1, -1, -1).float()
+        shared_grid_3d.unsqueeze(0).to(torch.float16).expand(B, -1, -1, -1, -1)
     )  # [180, 90, 128, 128, 3]
 
     return grid_5d
