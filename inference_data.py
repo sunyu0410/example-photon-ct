@@ -104,6 +104,8 @@ class InferenceBeamData(Dataset):
 
     def cal_bev(self, n_batch=30):
 
+        print('Calculating BEVs')
+
         def _cal_scales(self):
             src_mm = get_source_location_mm(self.isocentre, 0, self.sad)
             z_scales = torch.tensor(cal_scales(self.img_sitk, self.isocentre, src_mm))[
