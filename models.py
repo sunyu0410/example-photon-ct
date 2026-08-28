@@ -34,6 +34,7 @@ class BeamNet(nn.Module):
             x = F.pad(x, (0, pad_w, 0, pad_h), mode='constant')
 
         # Reverse the operations
+        print(list(self.model.parameters())[0].device, x.device)
         out = self.model(x)[:,:,:h,:w]
         out = out.squeeze(1).moveaxis(0,1)
         

@@ -65,7 +65,7 @@ class InferenceBeamData(Dataset):
         
         self.img_sitk = self.load_input_by_index(self.input_idx) # loads the first image
         
-        self.img = torch.tensor(sitk.GetArrayFromImage(self.img_sitk)).float()
+        self.img = torch.tensor(sitk.GetArrayFromImage(self.img_sitk)).float() ####### float16 ########
 
         self.rot_input_tensor = (
             torch.randn((30,) + self.img_sitk.GetSize()[::-1])
@@ -122,7 +122,7 @@ class InferenceBeamData(Dataset):
                 bev_iso = draw_iso_mlc(self.img_sitk, mlc)  # (nx, nz) -> (246, 249)
                 bev_iso_list.append(bev_iso)
             bev_iso_list = np.stack(bev_iso_list, axis=0)
-            mlc_masks_2d = torch.tensor(bev_iso_list).float()
+            mlc_masks_2d = torch.tensor(bev_iso_list).float() ####### float16 ########
             return mlc_masks_2d
 
         # Cal z_scales
@@ -171,7 +171,7 @@ class InferenceBeamData(Dataset):
 
     def inference(self, model, max_dose=6e-5):
         cp_preds = []
-        for idx, (img, bev, mask, loc) in tqdm(enumerate(self)):
+        for (img, bev, mask, loc) in tqdm(self):
 
             ############ Model Inference #################
             with torch.inference_mode():
@@ -208,7 +208,10 @@ class InferenceBeamData(Dataset):
 
         cutoff = self.cutoff[:, None, None, None] * 1e5
         max = torch.tensor(max_dose).repeat(len(cutoff))[:, None, None, None] * 1e5
-        self.preds_back = self.preds_back.clip(min=cutoff, max=max)
+
+        self.preds_back[self.preds_back<cutoff] = 0
+        self.preds_back[self.preds_back>max_dose*1e5] = max_dose*1e5
+
         return self.preds_back
 
 class InferenceRunner():
