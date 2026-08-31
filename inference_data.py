@@ -16,6 +16,8 @@ from bev_torch import (
     draw_iso_mlc,
 )
 
+from mlp import infer_parallel
+
 import pandas as pd
 import gc
 
@@ -32,13 +34,6 @@ def get_bbox(arr, margin=5):
     max_idx = np.clip(idx.max(1) + margin, 0, shape)
 
     return np.stack([min_idx, max_idx])
-
-
-# Index(['gantry_angle', 'mlc_left_int_mm', 'mlc_right_int_mm', 'cp_uuid',
-#        'output_info.minimum_cutoff', 'output_info.output_file_idx',
-#        'output_info.idx_in_output', 'image_file_idx', 'anatomical_region',
-#        'beams.SAD', 'beams.iso_center', 'beams.num_mlc_leaf_pairs'],
-#       dtype='str')
 
 
 class InferenceBeamData(Dataset):
@@ -169,24 +164,12 @@ class InferenceBeamData(Dataset):
             img[loc], bev[loc], mask[loc], loc,
         )
 
-    def inference(self, model, max_dose=6e-5):
-        cp_preds = []
-        for (img, bev, mask, loc) in tqdm(self):
-
-            ############ Model Inference #################
-            with torch.inference_mode():
-                box_pred = model(img, bev, mask).cpu()
-                box_pred[bev==0] = 0 
-                cp_pred = torch.zeros_like(self.img)
-                cp_pred[loc] = box_pred
-                cp_preds.append(cp_pred)
-            ###############################################
-
-        self.preds = torch.stack(cp_preds, dim=0)
-
-        self.preds_back = torch.zeros_like(self.preds)
+    def inference(self, model, max_dose=9e-5):
+        # Parallel inference
+        self.preds = infer_parallel(self, model)
 
         # Rotate it to the gantry angle
+        self.preds_back = torch.zeros_like(self.preds)
         for i in tqdm(
             range(0, self.len // 30 + bool(self.len % 30)), desc="Rotating preds"
         ):
@@ -207,7 +190,6 @@ class InferenceBeamData(Dataset):
             ).cpu()
 
         cutoff = self.cutoff[:, None, None, None] * 1e5
-        max = torch.tensor(max_dose).repeat(len(cutoff))[:, None, None, None] * 1e5
 
         self.preds_back[self.preds_back<cutoff] = 0
         self.preds_back[self.preds_back>max_dose*1e5] = max_dose*1e5
@@ -270,48 +252,3 @@ class InferenceRunner():
         print('Runner finishes')
      
 
-
-if __name__ == "__main__":
-    import pandas as pd
-    import json
-
-    from models import BeamNet
-    model = BeamNet()
-    model.load_state_dict(torch.load('model_weights.pth'))
-
-    metadata = json.load(open("../metadata/stacked-photon-beam-level-metadata.txt"))
-    df = pd.json_normalize(
-        metadata, 
-        record_path=['beams', 'control_points'], 
-        meta=[
-            'image_file_idx', 
-            'anatomical_region', 
-            ['beams', 'SAD'], 
-            ['beams', 'iso_center'], 
-            ['beams', 'num_mlc_leaf_pairs'],
-        ]
-    )
-    groups = df.groupby('output_info.output_file_idx')
-
-    
-    for i in range(groups.ngroups):
-        print(f'Processing Group {i}')
-        d = InferenceBeamData(groups.get_group(i))
-        out = d.inference(model)
-
-        # Scale it back 1e-5
-        out = out * 1e-5
-
-        # Save to .mha e.g. (x, x, x, 40)
-        preds_sitk = []
-        for t in out.unbind(dim=0):
-            pred_sitk = sitk.GetImageFromArray(t.float().numpy())
-            pred_sitk.CopyInformation(d.img_sitk)
-            preds_sitk.append(pred_sitk)
-        stacked = sitk.JoinSeries(preds_sitk)
-
-        sitk.WriteImage(stacked, output_dir / "output.mha", useCompression=False)
-
-        break
-
-    

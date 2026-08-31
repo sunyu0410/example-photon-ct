@@ -42,10 +42,9 @@ def init_model():
     print(f"Using device: {device}")
 
     #######################################
-    from models import BeamNet
-    model = BeamNet()
-    model_dir = Path("/opt/ml/model")
-    model.load_state_dict(torch.load(model_dir / 'model_weights.pth'))
+    from mlp import DoseModel
+    model = DoseModel()
+    model.load_weight("/opt/ml/model")
     #######################################
 
     
