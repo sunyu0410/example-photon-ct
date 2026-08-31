@@ -164,7 +164,7 @@ class InferenceBeamData(Dataset):
             img[loc], bev[loc], mask[loc], loc,
         )
 
-    def inference(self, model, max_dose=9e-5):
+    def inference(self, model, max_dose=15e-5):
         # Parallel inference
         self.preds = infer_parallel(self, model)
 
